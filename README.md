@@ -1,155 +1,270 @@
-# Chat-based-app
-End-to-end encrypted C++ chat application with SSL/TLS, real-time messaging, and graph-based friend recommendations.
-# Secure Chat Application with TLS & Social Graph
+# Secure Multi-Client Chat Application
 
-## Overview
+A C++ client-server chat application implementing TCP socket programming, OpenSSL TLS, concurrent client handling, user authentication, real-time private/broadcast messaging, file-based persistence, and graph-based friend recommendations.
 
-This project is a **secure, real-time chat application** built in C++ that enables private and group communication between multiple users. It incorporates **SSL/TLS encryption** to ensure secure data transmission and implements a **graph-based friend recommendation system** for enhanced social connectivity.
+## Features
 
-The project demonstrates concepts from **computer networks, concurrent programming, and graph algorithms**.
-
----
-
-## Key Features
-
-* End-to-end encrypted communication using SSL/TLS
-* Real-time private and group messaging
-* Multi-client handling using concurrent socket programming
-* Thread-safe architecture for reliable communication
-* Graph-based friend recommendation system
-* Efficient handling of multiple connections
-
----
+* **Client-Server Architecture** — Centralized server for managing multiple connected clients and routing messages.
+* **TCP Socket Communication** — Reliable, connection-oriented communication using TCP sockets.
+* **TLS Security** — Secured client-server communication using OpenSSL TLS with server certificate and private key configuration.
+* **Concurrent Client Handling** — Multi-threaded server with a dedicated handler thread for each connected client.
+* **Thread Synchronization** — Mutex-based synchronization to protect shared client state across concurrent threads.
+* **Real-Time Messaging** — Supports private messaging and broadcast messaging between connected users.
+* **User Authentication** — User registration and login with hashed password storage.
+* **File-Based Persistence** — Stores user and friendship data in local files.
+* **Friend Management** — Add and manage friendships between users.
+* **Graph-Based Friend Recommendations** — Represents friendships as an undirected graph and recommends potential connections based on mutual-friend counts.
+* **Concurrent Message Reception** — Client uses a separate receiver thread to receive messages while the main thread handles user input.
 
 ## System Architecture
 
-* **Client-Server Model**
+```text
+                         ┌──────────────────────┐
+                         │        SERVER        │
+                         │                      │
+                         │  TCP Socket : 8888   │
+                         │  OpenSSL TLS         │
+                         │  Client Management   │
+                         │  Mutex Synchronization│
+                         └──────────┬───────────┘
+                                    │
+                  ┌─────────────────┼─────────────────┐
+                  │                 │                 │
+             Client A           Client B          Client C
+                  │                 │                 │
+               TLS/TCP           TLS/TCP           TLS/TCP
+                  │                 │                 │
+             Input +          Input +          Input +
+             Receiver         Receiver         Receiver
+              Thread           Thread           Thread
+```
 
-  * Server manages multiple client connections
-  * Clients communicate securely via encrypted channels
+### Communication Flow
 
-* **Security Layer**
+1. The server initializes Winsock and OpenSSL.
+2. The server creates a TCP socket, binds it to port `8888`, and starts listening.
+3. A client establishes a TCP connection with the server.
+4. OpenSSL performs the TLS handshake between the client and server.
+5. The server receives the authenticated client's username and registers the connection.
+6. A dedicated server thread handles communication for the connected client.
+7. The client runs a separate receiver thread so incoming messages can be processed while the user enters messages.
+8. The server routes messages as private messages or broadcasts based on the application-level command.
 
-  * Encryption using SSL/TLS protocols
-  * Secure key exchange and data transmission
+## Messaging
 
-* **Concurrency**
+The application uses a simple command-based messaging format.
 
-  * Multi-threaded server to handle multiple users simultaneously
+### Broadcast Message
 
-* **Recommendation Engine**
+Any normal message is broadcast to other connected clients.
 
-  * Graph-based approach to suggest new connections
+```text
+Hello everyone!
+```
 
----
+### Private Message
 
-## Security Implementation
+Private messages use:
 
-* Integrated OpenSSL for SSL/TLS encryption
-* Ensures:
+```text
+/pm <username> <message>
+```
 
-  * Data confidentiality
-  * Integrity of messages
-  * Protection against eavesdropping
+Example:
 
----
+```text
+/pm Bob Hello Bob!
+```
+
+The server identifies the recipient and sends the message only through that client's TLS connection.
+
+### Exit
+
+```text
+/quit
+```
+
+closes the client's chat session and releases the associated network resources.
+
+## Authentication
+
+The application provides:
+
+* User registration
+* User login
+* Username-based identification
+* Hashed password storage
+* Local persistence of user information
+
+User authentication data is maintained using local files.
+
+> **Security Note:** The current implementation uses C++ `std::hash` for password transformation. This is suitable for the project implementation but is not intended as production-grade password hashing. A production authentication system should use a dedicated password hashing algorithm such as Argon2 or bcrypt with per-user salts.
+
+## Friend Recommendation System
+
+Friend relationships are represented using an undirected graph:
+
+* Each user is represented as a **node**.
+* Each friendship is represented as an **edge**.
+* For a given user, the system examines friends-of-friends.
+* Existing direct friends and the user themselves are excluded from recommendations.
+* Potential connections are ranked according to their number of mutual friends.
+
+For example:
+
+```text
+        Bob
+       /   \
+    Alice   David
+       \   /
+      Charlie
+```
+
+If Alice is connected to Bob and Charlie, while both Bob and Charlie are connected to David, David can be recommended to Alice based on the two mutual connections.
+
+## Data Structures
+
+The project uses:
+
+* `vector` — stores currently connected clients.
+* `unordered_map` — stores user and graph-related mappings.
+* `unordered_set` — stores friendship relationships and provides efficient membership checks.
+* `string` — handles usernames and messages.
+
+## Concurrency
+
+The server creates a separate thread for each connected client.
+
+```text
+Client A → Thread A
+Client B → Thread B
+Client C → Thread C
+```
+
+Because these threads access shared client information, a mutex protects the shared client collection.
+
+The implementation uses `std::lock_guard` for scoped mutex management.
+
+On the client side, a separate receiver thread continuously waits for incoming messages while the main thread handles user input.
+
+## Security
+
+The application uses **OpenSSL TLS** to secure communication between each client and the server.
+
+The server:
+
+1. Creates an OpenSSL TLS context.
+2. Loads the server certificate.
+3. Loads the server private key.
+4. Performs `SSL_accept()` after accepting a TCP connection.
+
+The client:
+
+1. Creates an OpenSSL TLS context.
+2. Establishes the TCP connection.
+3. Performs `SSL_connect()`.
+4. Uses `SSL_read()` and `SSL_write()` for encrypted communication.
+
+> The application provides TLS-secured client-server communication. It should not be described as end-to-end encryption because the server terminates the TLS connection and routes messages between clients.
+
+## Technologies Used
+
+* **Language:** C++
+* **Networking:** TCP/IP, Windows Sockets (Winsock)
+* **Security:** OpenSSL / TLS
+* **Concurrency:** C++ Threads, Mutex, `std::lock_guard`
+* **Data Structures:** Vector, Hash Map, Hash Set, Graph
+* **Build System:** CMake
+* **Persistence:** Local text files
 
 ## Project Structure
 
-```
-secure-chat-app/
-│── client/              # Client-side implementation
-│── server/              # Server-side implementation
-│── include/             # Header files
-│── src/                 # Core logic (socket handling, encryption)
-│── certs/               # SSL certificates (self-signed)
-│── build/               # Compiled files (ignored)
-│── README.md
-```
-
----
-
-## Installation & Setup
-
-### 1. Clone the repository
-
-```
-git clone https://github.com/your-username/secure-chat-app.git
-cd secure-chat-app
+```text
+Chat-based-app/
+│
+├── include/
+│   └── ...
+│
+├── tls_client_p.cpp
+├── tls_server_p.cpp
+├── auth.cpp
+├── auth.hpp
+├── CMakeLists.txt
+├── users.txt
+├── friends.txt
+├── hashed_map.txt
+├── .gitignore
+└── README.md
 ```
 
-### 2. Install dependencies
+## Building and Running
 
-Make sure you have:
+### Prerequisites
 
-* C++ compiler (g++)
-* OpenSSL installed
+* Windows
+* C++ compiler with C++11 or later
+* CMake
+* OpenSSL
 
-### 3. Compile the project
+### Build
 
-```
-g++ server.cpp -o server -lssl -lcrypto -lpthread
-g++ client.cpp -o client -lssl -lcrypto -lpthread
-```
+Create a build directory and configure the project using CMake:
 
-### 4. Run the server
-
-```
-./server
-```
-
-### 5. Run clients (in different terminals)
-
-```
-./client
+```bash
+mkdir build
+cd build
+cmake ..
+cmake --build .
 ```
 
----
+Make sure OpenSSL is correctly installed and available to the build configuration.
 
-## How It Works
+### Run the Server
 
-1. Server starts and listens for incoming connections
-2. Clients connect securely using SSL/TLS
-3. Messages are encrypted before transmission
-4. Server handles multiple clients concurrently
-5. Friend recommendation system suggests connections using graph logic
+Start the server executable first.
 
----
+```bash
+./tls_server_p
+```
 
-## Key Concepts Used
+The server listens for incoming TCP connections on port `8888`.
 
-* Socket Programming
-* SSL/TLS Encryption
-* Multi-threading
-* Graph Algorithms
-* Client-Server Architecture
+### Run the Client
 
----
+Start one or more client instances:
+
+```bash
+./tls_client_p
+```
+
+Register or log in, then connect to the server to begin chatting.
+
+> The exact executable names may depend on the CMake configuration and compiler being used.
+
+## Key Learning Outcomes
+
+This project provided practical experience with:
+
+* TCP socket programming
+* Client-server system design
+* TLS integration using OpenSSL
+* Concurrent programming and thread management
+* Mutex-based synchronization
+* Blocking network I/O
+* C++ STL data structures
+* Graph traversal and recommendation logic
+* Authentication and file-based persistence
+* Resource management for sockets and TLS connections
 
 ## Future Improvements
 
-* Add GUI for better user experience
-* Implement authentication (login/signup system)
-* Use database for persistent chat storage
-* Improve recommendation system using advanced algorithms
-* Deploy on cloud for global accessibility
+Potential improvements for a production-oriented implementation include:
 
----
-
-## Contributing
-
-Contributions are welcome! Feel free to fork and improve the project.
-
----
-
-## Disclaimer
-
-This project is for educational purposes and demonstrates secure communication concepts.
-
----
-
-## Contact
-
-For queries or collaboration, feel free to connect via GitHub or LinkedIn.
-
----
+* Replace `std::hash` with Argon2 or bcrypt for password hashing.
+* Add explicit TLS certificate verification on the client.
+* Implement message framing using length-prefixed messages or delimiters.
+* Replace file-based persistence with a relational database.
+* Replace the thread-per-client model with an event-driven or thread-pool architecture for larger numbers of concurrent connections.
+* Introduce centralized logging and improved error handling.
+* Add automated unit and integration tests.
+* Add a more structured group-chat model with group membership and permissions.
